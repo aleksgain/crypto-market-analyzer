@@ -3,6 +3,7 @@ import { Grid, Paper, Typography, Box, CircularProgress, Table, TableBody, Table
 import { Bar } from 'react-chartjs-2';
 import { Chart, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import axios from 'axios';
+import config from '../config';
 
 // Register Chart.js components
 Chart.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
@@ -15,7 +16,7 @@ const AccuracyPage = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await axios.get('http://localhost:8080/api/accuracy');
+        const response = await axios.get(`${config.apiBaseUrl}${config.endpoints.accuracy}`);
         setAccuracyData(response.data);
         setLoading(false);
       } catch (err) {

@@ -3,6 +3,7 @@ import { Grid, Paper, Typography, Box, CircularProgress, Card, CardContent, Card
 import { Doughnut } from 'react-chartjs-2';
 import { Chart, ArcElement, Tooltip, Legend } from 'chart.js';
 import axios from 'axios';
+import config from '../config';
 
 // Register Chart.js components
 Chart.register(ArcElement, Tooltip, Legend);
@@ -13,19 +14,20 @@ const NewsPage = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchNews = async () => {
       try {
-        const response = await axios.get('http://localhost:8080/api/news');
+        setLoading(true);
+        const response = await axios.get(`${config.apiBaseUrl}${config.endpoints.news}`);
         setNewsData(response.data);
         setLoading(false);
-      } catch (err) {
-        console.error('Error fetching news data:', err);
+      } catch (error) {
+        console.error('Error fetching news data:', error);
         setError('Failed to fetch news data. Please try again later.');
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchNews();
   }, []);
 
   const formatSentimentData = (newsItems) => {

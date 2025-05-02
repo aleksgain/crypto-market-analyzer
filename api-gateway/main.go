@@ -66,15 +66,25 @@ func main() {
 
 	// Configure CORS for both development and production
 	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowAllOrigins = false
 
-	// In production, you'd replace these with your actual domains
-	corsConfig.AllowOrigins = []string{
-		"http://localhost:3000",
-		"http://localhost:8080",
-		"https://your-production-domain.com", // Replace with your actual domain
+	// Get allowed origins from environment variable or use defaults
+	allowedOriginsStr := getEnv("ALLOWED_ORIGINS", "")
+	var allowedOrigins []string
+
+	if allowedOriginsStr != "" {
+		// Split comma-separated list of allowed origins
+		allowedOrigins = strings.Split(allowedOriginsStr, ",")
+		log.Printf("Using configured allowed origins: %v", allowedOrigins)
+	} else {
+		// Use development defaults
+		allowedOrigins = []string{
+			"http://localhost:3000",
+			"http://localhost:8080",
+		}
+		log.Printf("Using default development allowed origins: %v", allowedOrigins)
 	}
 
+	corsConfig.AllowOrigins = allowedOrigins
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	corsConfig.ExposeHeaders = []string{"Content-Length"}

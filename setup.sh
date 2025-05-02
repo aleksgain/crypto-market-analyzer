@@ -39,6 +39,7 @@ DEFAULT_FLASK_ENV="development"
 DEFAULT_FLASK_DEBUG="1"
 DEFAULT_GIN_MODE="debug"
 DEFAULT_PREDICTION_INTERVALS="1,7,30"
+DEFAULT_ALLOWED_ORIGINS=""
 
 echo -e "${BLUE}Please enter the following information (or press Enter for defaults):${NC}"
 echo
@@ -109,6 +110,13 @@ read -p "Prediction Intervals (comma-separated days) [$DEFAULT_PREDICTION_INTERV
 PREDICTION_INTERVALS=${PREDICTION_INTERVALS:-$DEFAULT_PREDICTION_INTERVALS}
 echo
 
+# CORS settings
+echo -e "${GREEN}CORS Settings:${NC}"
+echo -e "${YELLOW}Enter comma-separated list of allowed origins for CORS (leave blank for development defaults)${NC}"
+echo -e "${YELLOW}Example: https://your-domain.com,https://app.your-domain.com${NC}"
+read -p "Allowed Origins: " ALLOWED_ORIGINS
+echo
+
 # Create .env file
 cat > .env << EOF
 # API Keys
@@ -136,6 +144,9 @@ GIN_MODE=$GIN_MODE
 
 # Prediction Settings
 PREDICTION_INTERVALS=$PREDICTION_INTERVALS
+
+# CORS Settings
+ALLOWED_ORIGINS=$ALLOWED_ORIGINS
 EOF
 
 # Make setup script executable

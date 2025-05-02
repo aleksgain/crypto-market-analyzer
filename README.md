@@ -110,7 +110,11 @@ The OpenAI integration can be modified by editing the prompt templates in the AI
 
 When deploying to production, consider these important steps:
 
-1. **CORS Configuration**: Update the allowed origins in `api-gateway/main.go` to include your production domain.
+1. **CORS Configuration**: Set the `ALLOWED_ORIGINS` environment variable in your `.env` file to include your production domains:
+   ```
+   ALLOWED_ORIGINS=https://your-production-domain.com,https://subdomain.your-domain.com
+   ```
+   This will restrict API access to only the specified domains.
 
 2. **Reverse Proxy Setup**: Configure a reverse proxy (like Nginx) in front of your services to:
    - Serve the frontend statically
