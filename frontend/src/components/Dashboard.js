@@ -175,7 +175,7 @@ const Dashboard = () => {
       // Fetch predictions
       try {
         const predictionsResponse = await axios.get(`${config.apiBaseUrl}${config.endpoints.predictions}?symbols=BTC,ETH`);
-        setPredictionsData(predictionsResponse.data);
+        setPredictionsData(predictionsResponse.data.predictions);
         setLoading(prev => ({ ...prev, predictions: false }));
       } catch (err) {
         console.error('Error fetching prediction data:', err);
@@ -232,8 +232,12 @@ const Dashboard = () => {
     
     const labels = timeframes.map(key => key.replace('_day', '-Day'));
     
-    const currentPrice = data.current_price;
-    const predictedPrices = timeframes.map(key => data.predictions[key].predicted_price);
+    // Add null checks for current_price
+    const currentPrice = data.current_price || 0;
+    const predictedPrices = timeframes.map(key => {
+      return data.predictions[key] && data.predictions[key].predicted_price ? 
+        data.predictions[key].predicted_price : 0;
+    });
     
     return {
       labels: ['Current', ...labels],
@@ -485,7 +489,7 @@ const Dashboard = () => {
                             {timeframe.replace('_', ' ')}
                           </Typography>
                           <Typography variant="body2" fontWeight="bold">
-                            ${prediction.predicted_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            ${prediction.predicted_price ? prediction.predicted_price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "N/A"}
                           </Typography>
                           {prediction.confidence && (
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>

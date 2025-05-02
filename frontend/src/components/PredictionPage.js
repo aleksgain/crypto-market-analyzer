@@ -22,7 +22,7 @@ const PredictionPage = () => {
     const fetchData = async () => {
       try {
         const response = await axios.get(`${config.apiBaseUrl}${config.endpoints.predictions}?symbols=BTC,ETH`);
-        setPredictionData(response.data);
+        setPredictionData(response.data.predictions);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching prediction data:', err);
@@ -237,7 +237,7 @@ const PredictionPage = () => {
           <Grid item xs={12} md={6} key={symbol}>
             <Paper sx={{ p: 3 }}>
               <Typography variant="h5" gutterBottom>
-                {symbol} - Current Price: ${data.current_price.toLocaleString()}
+                {symbol} - Current Price: ${data && data.current_price ? data.current_price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "N/A"}
               </Typography>
               
               <Box sx={{ height: 300, mb: 3 }}>
@@ -257,7 +257,7 @@ const PredictionPage = () => {
               </Typography>
               
               <Grid container spacing={2}>
-                {Object.entries(data.predictions)
+                {data && data.predictions && Object.entries(data.predictions)
                   .sort((a, b) => {
                     // Extract the number of days from the timeframe key
                     const daysA = parseInt(a[0].split('_')[0]);
@@ -288,28 +288,28 @@ const PredictionPage = () => {
                           <TrendingDownIcon color="error" />
                         )}
                         <Typography variant="h6" sx={{ ml: 1 }}>
-                          ${prediction.predicted_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          ${prediction.predicted_price ? prediction.predicted_price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "N/A"}
                         </Typography>
                       </Box>
                       
                       <Typography variant="body2" color="text.secondary">
-                        Target date: {new Date(prediction.target_date).toLocaleDateString()}
+                        Target date: {prediction.target_date ? new Date(prediction.target_date).toLocaleDateString() : "N/A"}
                       </Typography>
                       
                       <Box sx={{ mt: 1, mb: 1 }}>
                         <LinearProgress 
                           variant="determinate" 
-                          value={prediction.confidence * 100}
+                          value={prediction.confidence ? prediction.confidence * 100 : 0}
                           color={prediction.direction === 'up' ? 'success' : 'error'} 
                           sx={{ height: 6, borderRadius: 3 }}
                         />
                         <Typography variant="caption" display="block">
-                          Confidence: {Math.round(prediction.confidence * 100)}%
+                          Confidence: {prediction.confidence ? Math.round(prediction.confidence * 100) : 0}%
                         </Typography>
                       </Box>
                       
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: 'center', mt: 1 }}>
-                        {prediction.sentiment_factor !== 0 && (
+                        {prediction.sentiment_factor !== 0 && prediction.sentiment_factor !== undefined && (
                           <Chip 
                             label={`Sentiment: ${prediction.sentiment_factor >= 0 ? '+' : ''}${prediction.sentiment_factor.toFixed(2)}`}
                             size="small"
@@ -318,7 +318,7 @@ const PredictionPage = () => {
                           />
                         )}
                         
-                        {prediction.technical_factor !== 0 && (
+                        {prediction.technical_factor !== 0 && prediction.technical_factor !== undefined && (
                           <Chip 
                             label={`Technical: ${prediction.technical_factor >= 0 ? '+' : ''}${prediction.technical_factor.toFixed(2)}`}
                             size="small"

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Grid, Paper, Typography, Box, CircularProgress, Card, CardContent, CardActionArea, Chip, Link } from '@mui/material';
+import { Grid, Paper, Typography, Box, CircularProgress, Card, CardContent, CardActionArea, Chip, Link, Button, IconButton } from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart, ArcElement, Tooltip, Legend } from 'chart.js';
 import axios from 'axios';
@@ -13,20 +14,22 @@ const NewsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchNews = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get(`${config.apiBaseUrl}${config.endpoints.news}`);
-        setNewsData(response.data);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching news data:', error);
-        setError('Failed to fetch news data. Please try again later.');
-        setLoading(false);
-      }
-    };
+  const fetchNews = async () => {
+    try {
+      setLoading(true);
+      // Add a timestamp to bust the cache
+      const timestamp = new Date().getTime();
+      const response = await axios.get(`${config.apiBaseUrl}${config.endpoints.news}?_t=${timestamp}`);
+      setNewsData(response.data);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching news data:', error);
+      setError('Failed to fetch news data. Please try again later.');
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchNews();
   }, []);
 
@@ -112,9 +115,19 @@ const NewsPage = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Crypto News & Sentiment Analysis
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4">
+          Crypto News & Sentiment Analysis
+        </Typography>
+        <IconButton 
+          onClick={fetchNews} 
+          disabled={loading}
+          color="primary"
+          aria-label="refresh news"
+        >
+          <RefreshIcon />
+        </IconButton>
+      </Box>
       
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>

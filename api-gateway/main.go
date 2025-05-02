@@ -95,7 +95,7 @@ func main() {
 
 	// Set up routes
 	r.GET("/api/prices", cachedProxy("prices", 5*time.Minute))
-	r.GET("/api/news", cachedProxy("news", 30*time.Minute))
+	r.GET("/api/news", cachedProxy("news", 5*time.Minute))
 	r.GET("/api/predictions", cachedProxy("predictions", 15*time.Minute))
 	r.GET("/api/accuracy", cachedProxy("accuracy", 1*time.Hour))
 	r.GET("/api/advanced-insights", cachedProxy("advanced-insights", 10*time.Minute))
