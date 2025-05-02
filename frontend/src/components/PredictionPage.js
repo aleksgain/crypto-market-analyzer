@@ -35,12 +35,20 @@ const PredictionPage = () => {
   }, []);
 
   const formatChartData = (symbol, data) => {
-    const labels = Object.keys(data.predictions).map(key => 
+    // Sort timeframes by day count (1-day, 7-day, 30-day)
+    const timeframes = Object.keys(data.predictions)
+      .sort((a, b) => {
+        const daysA = parseInt(a.split('_')[0]);
+        const daysB = parseInt(b.split('_')[0]);
+        return daysA - daysB;
+      });
+    
+    const labels = timeframes.map(key => 
       key.replace('_day', '-Day')
     );
     
     const currentPrice = data.current_price;
-    const predictedPrices = Object.values(data.predictions).map(p => p.predicted_price);
+    const predictedPrices = timeframes.map(key => data.predictions[key].predicted_price);
     
     return {
       labels: ['Current', ...labels],
@@ -249,7 +257,15 @@ const PredictionPage = () => {
               </Typography>
               
               <Grid container spacing={2}>
-                {Object.entries(data.predictions).map(([timeframe, prediction]) => (
+                {Object.entries(data.predictions)
+                  .sort((a, b) => {
+                    // Extract the number of days from the timeframe key
+                    const daysA = parseInt(a[0].split('_')[0]);
+                    const daysB = parseInt(b[0].split('_')[0]);
+                    // Sort by days ascending
+                    return daysA - daysB;
+                  })
+                  .map(([timeframe, prediction]) => (
                   <Grid item xs={12} md={4} key={timeframe}>
                     <Paper 
                       sx={{ 

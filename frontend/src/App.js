@@ -7,6 +7,9 @@ import Box from '@mui/material/Box';
 // Components
 import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
+import PredictionPage from './components/PredictionPage';
+import AccuracyPage from './components/AccuracyPage';
+import NewsPage from './components/NewsPage';
 
 function App() {
   // State to track the theme mode
@@ -72,10 +75,9 @@ function App() {
         <Box sx={{ flexGrow: 1, p: 3 }}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            {/* Redirect old routes to the main dashboard */}
-            <Route path="/predictions" element={<Navigate to="/" replace />} />
-            <Route path="/accuracy" element={<Navigate to="/" replace />} />
-            <Route path="/news" element={<Navigate to="/" replace />} />
+            <Route path="/predictions" element={<PredictionPage />} />
+            <Route path="/accuracy" element={<AccuracyPage />} />
+            <Route path="/news" element={<NewsPage />} />
           </Routes>
         </Box>
       </Box>
