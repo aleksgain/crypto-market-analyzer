@@ -15,7 +15,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Alert
+  Alert,
+  LinearProgress
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -23,6 +24,8 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import EqualizerIcon from '@mui/icons-material/Equalizer';
 import ArticleIcon from '@mui/icons-material/Article';
 import NewReleasesIcon from '@mui/icons-material/NewReleases';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
+import SettingsEthernetIcon from '@mui/icons-material/SettingsEthernet';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import { 
   Chart, 
@@ -51,6 +54,75 @@ Chart.register(
   ArcElement,
   BarElement
 );
+
+const TechnicalSignals = ({ signals }) => {
+  if (!signals) return null;
+  
+  const { trend, oscillators, values, overall, levels } = signals;
+
+  return (
+    <Box sx={{ mt: 2, mb: 2, p: 1, bgcolor: 'background.paper', borderRadius: 1, border: 1, borderColor: 'divider' }}>
+      <Typography variant="subtitle1" gutterBottom display="flex" alignItems="center" fontWeight="bold">
+        <ShowChartIcon sx={{ mr: 1, fontSize: 'small' }} />
+        Technical Indicators
+      </Typography>
+      
+      <Grid container spacing={1}>
+        {/* Trend Indicators */}
+        <Grid item xs={12} md={6}>
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+            <Chip 
+              size="small"
+              label={`SMA: ${trend.sma_trend}`}
+              color={trend.sma_trend === 'bullish' ? 'success' : 'error'}
+              variant="outlined"
+            />
+            <Chip 
+              size="small"
+              label={`MACD: ${trend.macd}`}
+              color={trend.macd === 'bullish' ? 'success' : 'error'}
+              variant="outlined"
+            />
+            <Chip 
+              size="small"
+              label={`RSI: ${values.rsi}`}
+              color={
+                oscillators.rsi === 'overbought' ? 'error' : 
+                oscillators.rsi === 'oversold' ? 'success' : 'default'
+              }
+              variant="outlined"
+            />
+          </Box>
+        </Grid>
+        
+        {/* Signal Strength */}
+        <Grid item xs={12} md={6}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="caption" noWrap>
+              Signal: 
+              <Box component="span" sx={{ 
+                ml: 0.5, 
+                color: overall.signal === 'bullish' ? 'success.main' : 
+                        overall.signal === 'bearish' ? 'error.main' : 'text.secondary',
+                fontWeight: 'bold'
+              }}>
+                {overall.signal.toUpperCase()}
+              </Box>
+            </Typography>
+            <Box sx={{ flexGrow: 1 }}>
+              <LinearProgress 
+                variant="determinate" 
+                value={overall.strength * 100}
+                color={overall.signal === 'bullish' ? 'success' : 'error'} 
+                sx={{ height: 6, borderRadius: 3 }}
+              />
+            </Box>
+          </Box>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
 
 const Dashboard = () => {
   // State variables
@@ -383,6 +455,11 @@ const Dashboard = () => {
                 </Box>
               )}
               
+              {/* Technical Analysis Indicators */}
+              {predictionsData && predictionsData[symbol] && predictionsData[symbol].technical_signals && (
+                <TechnicalSignals signals={predictionsData[symbol].technical_signals} />
+              )}
+              
               {/* Detailed Predictions */}
               {predictionsData && predictionsData[symbol] && predictionsData[symbol].predictions && (
                 <Grid container spacing={1}>
@@ -410,6 +487,21 @@ const Dashboard = () => {
                           <Typography variant="body2" fontWeight="bold">
                             ${prediction.predicted_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                           </Typography>
+                          {prediction.confidence && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                              <Box sx={{ width: '100%', maxWidth: 40 }}>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={prediction.confidence * 100}
+                                  color={prediction.direction === 'up' ? 'success' : 'error'}
+                                  sx={{ height: 4, borderRadius: 2 }}
+                                />
+                              </Box>
+                              <Typography variant="caption">
+                                {Math.round(prediction.confidence * 100)}%
+                              </Typography>
+                            </Box>
+                          )}
                         </Paper>
                       </Grid>
                     ))}

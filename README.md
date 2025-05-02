@@ -6,6 +6,7 @@ A platform for cryptocurrency market analysis leveraging AI technologies to pred
 
 - **Real-time Price Tracking**: Monitor Bitcoin and Ethereum prices with live data from CoinGecko
 - **AI-Powered Price Predictions**: Advanced price forecasting for different timeframes
+- **Technical Analysis Indicators**: MACD, RSI, Moving Averages, and Bollinger Bands for improved prediction accuracy
 - **News Sentiment Analysis**: Analyses of news articles using both NLTK and OpenAI
 - **Advanced Market Insights**: AI-extracted market events, expert analysis, and on-chain trends
 - **Prediction Accuracy Tracking**: Historical accuracy metrics for model evaluation
@@ -79,7 +80,7 @@ The system exposes several API endpoints through the API gateway:
 
 - `/api/prices` - Current cryptocurrency prices
 - `/api/news` - Latest news with sentiment analysis
-- `/api/predictions` - Price predictions for different timeframes
+- `/api/predictions` - Price predictions with technical indicators for different timeframes
 - `/api/accuracy` - Historical prediction accuracy
 - `/api/advanced-insights` - AI-generated market analysis
 

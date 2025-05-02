@@ -16,6 +16,7 @@ import importlib
 import httpx
 import sys
 import types
+import numpy as np
 
 # Load environment variables
 load_dotenv()
@@ -247,7 +248,8 @@ def init_db():
             price FLOAT NOT NULL,
             market_cap FLOAT,
             volume_24h FLOAT,
-            timestamp TIMESTAMP NOT NULL
+            timestamp TIMESTAMP NOT NULL,
+            UNIQUE(symbol, timestamp)
         )
         ''')
         
@@ -585,6 +587,252 @@ def similarity_score(text1, text2):
     
     return len(intersection) / len(union)
 
+# Function to get historical price data
+def get_historical_prices(symbol, days=90):
+    """Get historical price data for a symbol"""
+    try:
+        coin_id = get_coin_id(symbol)
+        
+        # Query historical data from the database first
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cur.execute(
+            """
+            SELECT timestamp, price 
+            FROM crypto_prices 
+            WHERE symbol = %s 
+            ORDER BY timestamp DESC 
+            LIMIT %s
+            """,
+            (symbol, days)
+        )
+        
+        db_data = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if len(db_data) >= 30:  # We need at least 30 data points for good analysis
+            logger.info(f"Using historical price data from database for {symbol}")
+            # Convert to list of dictionaries
+            return db_data
+        
+        # If not enough data in DB, fetch from API
+        logger.info(f"Not enough historical data in DB, fetching from CoinGecko for {symbol}")
+        
+        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+        params = {
+            "vs_currency": "usd",
+            "days": days
+        }
+        
+        if COIN_API_KEY:
+            params["x_cg_demo_api_key"] = COIN_API_KEY
+            
+        response = requests.get(url, params=params)
+        
+        if response.status_code != 200:
+            logger.error(f"Error fetching historical data: {response.status_code} - {response.text}")
+            return []
+            
+        data = response.json()
+        
+        # Format data and store in DB
+        formatted_data = []
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        for timestamp, price in data['prices']:
+            # Convert timestamp (milliseconds) to datetime
+            dt = datetime.fromtimestamp(timestamp / 1000)
+            
+            # Store in DB
+            cur.execute(
+                """
+                INSERT INTO crypto_prices (symbol, price, timestamp) 
+                VALUES (%s, %s, %s)
+                ON CONFLICT (symbol, timestamp) DO NOTHING
+                """,
+                (symbol, price, dt)
+            )
+            
+            formatted_data.append({"timestamp": dt, "price": price})
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return formatted_data
+        
+    except Exception as e:
+        logger.error(f"Error getting historical prices: {str(e)}")
+        logger.error(traceback.format_exc())
+        return []
+
+# Function to calculate technical indicators
+def calculate_technical_indicators(price_data, symbol):
+    """Calculate technical indicators from price data"""
+    try:
+        # Need at least 50 data points for meaningful indicators
+        if len(price_data) < 50:
+            logger.warning(f"Not enough price data for {symbol} to calculate technical indicators")
+            return None
+            
+        # Convert to pandas DataFrame
+        df = pd.DataFrame(price_data)
+        
+        # Make sure timestamp is a datetime object and sorted
+        if isinstance(df['timestamp'][0], str):
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            
+        df = df.sort_values('timestamp')
+        
+        # Calculate indicators
+        # Simple Moving Averages
+        df['SMA20'] = df['price'].rolling(window=20).mean()
+        df['SMA50'] = df['price'].rolling(window=50).mean()
+        
+        # MACD
+        df['EMA12'] = df['price'].ewm(span=12, adjust=False).mean()
+        df['EMA26'] = df['price'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = df['EMA12'] - df['EMA26']
+        df['MACD_signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        df['MACD_hist'] = df['MACD'] - df['MACD_signal']
+        
+        # RSI
+        delta = df['price'].diff()
+        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+        loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # Bollinger Bands
+        df['BB_middle'] = df['price'].rolling(window=20).mean()
+        std_dev = df['price'].rolling(window=20).std()
+        df['BB_upper'] = df['BB_middle'] + (std_dev * 2)
+        df['BB_lower'] = df['BB_middle'] - (std_dev * 2)
+        
+        # Get latest values
+        latest = df.iloc[-1].to_dict()
+        
+        # Generate trend signals
+        sma_trend = 'bullish' if latest['SMA20'] > latest['SMA50'] else 'bearish'
+        
+        # MACD signal
+        macd_signal = 'bullish' if latest['MACD'] > latest['MACD_signal'] else 'bearish'
+        
+        # MACD histogram direction (last 3 periods)
+        if len(df) >= 3:
+            hist_direction = 'bullish' if df['MACD_hist'].iloc[-1] > df['MACD_hist'].iloc[-2] > df['MACD_hist'].iloc[-3] else \
+                            'bearish' if df['MACD_hist'].iloc[-1] < df['MACD_hist'].iloc[-2] < df['MACD_hist'].iloc[-3] else \
+                            'neutral'
+        else:
+            hist_direction = 'neutral'
+        
+        # RSI signal
+        if latest['RSI'] > 70:
+            rsi_signal = 'overbought'
+        elif latest['RSI'] < 30:
+            rsi_signal = 'oversold'
+        else:
+            rsi_signal = 'neutral'
+            
+        # Bollinger Bands
+        current_price = latest['price']
+        bb_position = (current_price - latest['BB_lower']) / (latest['BB_upper'] - latest['BB_lower'])
+        if bb_position > 0.8:
+            bb_signal = 'overbought'
+        elif bb_position < 0.2:
+            bb_signal = 'oversold'
+        else:
+            bb_signal = 'neutral'
+        
+        # Support and resistance
+        support_level = latest['BB_lower']
+        resistance_level = latest['BB_upper']
+        
+        # Overall signal strength calculation
+        bullish_signals = 0
+        bearish_signals = 0
+        
+        # SMA trend
+        if sma_trend == 'bullish':
+            bullish_signals += 1
+        else:
+            bearish_signals += 1
+            
+        # MACD signal
+        if macd_signal == 'bullish':
+            bullish_signals += 1
+        else:
+            bearish_signals += 1
+            
+        # MACD histogram direction
+        if hist_direction == 'bullish':
+            bullish_signals += 0.5
+        elif hist_direction == 'bearish':
+            bearish_signals += 0.5
+            
+        # RSI signal
+        if rsi_signal == 'oversold':
+            bullish_signals += 1
+        elif rsi_signal == 'overbought':
+            bearish_signals += 1
+            
+        # Bollinger Bands signal
+        if bb_signal == 'oversold':
+            bullish_signals += 1
+        elif bb_signal == 'overbought':
+            bearish_signals += 1
+            
+        # Calculate overall signal and strength
+        if bullish_signals > bearish_signals:
+            overall_signal = 'bullish'
+            signal_strength = bullish_signals / (bullish_signals + bearish_signals)
+        elif bearish_signals > bullish_signals:
+            overall_signal = 'bearish'
+            signal_strength = bearish_signals / (bullish_signals + bearish_signals)
+        else:
+            overall_signal = 'neutral'
+            signal_strength = 0.5
+            
+        # Format the result
+        tech_signals = {
+            'trend': {
+                'sma_trend': sma_trend,
+                'macd': macd_signal,
+                'macd_histogram': hist_direction
+            },
+            'oscillators': {
+                'rsi': rsi_signal,
+                'bollinger': bb_signal
+            },
+            'levels': {
+                'support': round(support_level, 2),
+                'resistance': round(resistance_level, 2)
+            },
+            'values': {
+                'rsi': round(latest['RSI'], 2),
+                'macd': round(latest['MACD'], 4),
+                'macd_signal': round(latest['MACD_signal'], 4),
+                'sma20': round(latest['SMA20'], 2),
+                'sma50': round(latest['SMA50'], 2)
+            },
+            'overall': {
+                'signal': overall_signal,
+                'strength': round(signal_strength, 2),
+                'bullish_signals': bullish_signals,
+                'bearish_signals': bearish_signals
+            }
+        }
+        
+        return tech_signals
+        
+    except Exception as e:
+        logger.error(f"Error calculating technical indicators: {str(e)}")
+        logger.error(traceback.format_exc())
+        return None
+
 @app.route('/api/predictions', methods=['GET'])
 def get_predictions():
     """Get price predictions for specified symbols"""
@@ -641,26 +889,59 @@ def get_predictions():
             ai_sentiment_data = cur.fetchone()
             ai_sentiment_score = ai_sentiment_data['avg_ai_sentiment'] if ai_sentiment_data and ai_sentiment_data['avg_ai_sentiment'] else None
             
-            # Simple prediction model but now with AI sentiment if available
+            # Get historical prices for technical analysis
+            historical_prices = get_historical_prices(symbol)
+            tech_signals = calculate_technical_indicators(historical_prices, symbol)
+            
+            # Simple prediction model with AI sentiment and technical analysis
             predictions = {}
             for days in PREDICTION_INTERVALS:
-                # Use AI sentiment if available, otherwise use traditional sentiment
+                # Base sentiment adjustment
                 if ai_sentiment_score is not None:
                     # AI sentiment is on -10 to 10 scale, normalize to -1 to 1 for consistency
                     normalized_ai_sentiment = ai_sentiment_score / 10
                     # Use a stronger factor for AI sentiment since it's more accurate
-                    adjustment = 1 + (normalized_ai_sentiment * 0.15 * days/10)
-                    predicted_price = current_price * adjustment
+                    sentiment_adjustment = normalized_ai_sentiment * 0.15 * days/10
                     sentiment_for_prediction = normalized_ai_sentiment
                 else:
                     # Fall back to traditional sentiment
-                    adjustment = 1 + (sentiment_score * 0.1 * days/10)
-                    predicted_price = current_price * adjustment
+                    sentiment_adjustment = sentiment_score * 0.1 * days/10
                     sentiment_for_prediction = sentiment_score
+                
+                # Technical analysis adjustment
+                tech_adjustment = 0
+                if tech_signals:
+                    # Apply technical signals to the prediction
+                    if tech_signals['overall']['signal'] == 'bullish':
+                        tech_adjustment = 0.05 * tech_signals['overall']['strength'] * days/10
+                    elif tech_signals['overall']['signal'] == 'bearish':
+                        tech_adjustment = -0.05 * tech_signals['overall']['strength'] * days/10
+                
+                # Combined adjustment
+                total_adjustment = 1 + sentiment_adjustment + tech_adjustment
+                predicted_price = current_price * total_adjustment
+                
+                # Direction of prediction
+                direction = "up" if predicted_price > current_price else "down"
+                
+                # Confidence based on alignment of signals
+                confidence = 0.5  # Base confidence
+                
+                if tech_signals:
+                    # If sentiment and technical signals align, increase confidence
+                    sent_direction = "up" if sentiment_adjustment > 0 else "down"
+                    tech_direction = "up" if tech_adjustment > 0 else "down"
+                    
+                    if sent_direction == tech_direction == direction:
+                        confidence = 0.8  # High confidence when all align
+                    elif sent_direction == tech_direction:
+                        confidence = 0.7  # Good confidence when sentiment and tech align
+                    elif sent_direction == direction or tech_direction == direction:
+                        confidence = 0.6  # Moderate confidence when one aligns with prediction
                 
                 target_date = current_time + timedelta(days=days)
                 
-                # Store prediction with AI sentiment if available
+                # Store prediction with sentiment and tech signals
                 cur.execute(
                     """
                     INSERT INTO predictions 
@@ -675,7 +956,11 @@ def get_predictions():
                     'target_date': target_date.isoformat(),
                     'sentiment_factor': sentiment_score,
                     'ai_sentiment_factor': ai_sentiment_score,
-                    'using_ai': ai_sentiment_score is not None
+                    'technical_factor': tech_adjustment,
+                    'direction': direction,
+                    'confidence': confidence,
+                    'using_ai': ai_sentiment_score is not None,
+                    'using_technical': tech_signals is not None
                 }
             
             cur.close()
@@ -683,7 +968,8 @@ def get_predictions():
             
             result[symbol] = {
                 'current_price': current_price,
-                'predictions': predictions
+                'predictions': predictions,
+                'technical_signals': tech_signals
             }
             
         return jsonify(result)
