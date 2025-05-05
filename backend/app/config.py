@@ -2,7 +2,8 @@
 
 import os
 import logging
-from typing import List
+import json
+from typing import List, Dict, Any
 
 # Configure logging
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -26,21 +27,32 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 # Prediction intervals in days
 PREDICTION_INTERVALS: List[int] = [int(x) for x in os.getenv('PREDICTION_INTERVALS', '1,7,30').split(',')]
 
-# News categories with weights for sentiment impact
-NEWS_CATEGORIES = {
+# Default news categories configuration
+DEFAULT_NEWS_CATEGORIES = {
     'crypto': {
         'keywords': ["bitcoin", "ethereum", "cryptocurrency", "crypto market", "blockchain"],
-        'weight': 1.0  # Base weight for crypto news
+        'weight': 1.0
     },
     'economic': {
         'keywords': ["inflation", "interest rates", "federal reserve", "recession", "stock market"],
-        'weight': 0.8  # Economic news has 80% of the impact of direct crypto news
+        'weight': 0.8
     },
     'geopolitical': {
         'keywords': ["trade war", "sanctions", "tariffs", "ukraine", "regulation"],
-        'weight': 0.6  # Geopolitical news has 60% of the impact of direct crypto news
+        'weight': 0.6
     }
 }
+
+# News categories with weights for sentiment impact - can be overridden with NEWS_CATEGORIES env var
+NEWS_CATEGORIES_JSON = os.getenv('NEWS_CATEGORIES')
+if NEWS_CATEGORIES_JSON:
+    try:
+        NEWS_CATEGORIES = json.loads(NEWS_CATEGORIES_JSON)
+    except json.JSONDecodeError:
+        logging.error("Invalid JSON in NEWS_CATEGORIES environment variable. Using defaults.")
+        NEWS_CATEGORIES = DEFAULT_NEWS_CATEGORIES
+else:
+    NEWS_CATEGORIES = DEFAULT_NEWS_CATEGORIES
 
 # Cryptocurrency symbol to CoinGecko ID mapping
 COIN_MAPPING = {
