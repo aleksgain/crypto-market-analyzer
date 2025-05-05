@@ -129,7 +129,7 @@ def get_recent_news(limit: int = 10) -> Dict[str, Any]:
                     weight = category_info['weight']
                     
                     # Get sentiment scores
-                    sentiment_data = analyze_article_sentiment(title, content, source, weight)
+                    sentiment_data = analyze_article_sentiment(title, content, source, weight, url)
                     sentiment_score = sentiment_data['sentiment_score']
                     ai_score = sentiment_data['ai_score']
                     ai_explanation = sentiment_data['ai_explanation']
@@ -234,7 +234,7 @@ def format_article_datetime(article_datetime) -> str:
         logger.error(f"Error formatting article datetime: {str(e)}")
         return get_utc_now().isoformat()
 
-def analyze_article_sentiment(title, content, source, weight):
+def analyze_article_sentiment(title, content, source, weight, url=None):
     """Analyze article sentiment using NLTK and OpenAI.
     
     Args:
@@ -242,6 +242,7 @@ def analyze_article_sentiment(title, content, source, weight):
         content: Article content
         source: Article source
         weight: Category weight
+        url: Optional article URL
         
     Returns:
         dict: Sentiment scores
@@ -258,7 +259,7 @@ def analyze_article_sentiment(title, content, source, weight):
         ai_score = None
         ai_explanation = None
         
-        ai_result = analyze_sentiment(title, content, source)
+        ai_result = analyze_sentiment(title, content, source, url)
         if ai_result:
             ai_score = ai_result.get('score')
             ai_explanation = ai_result.get('explanation')
@@ -417,7 +418,7 @@ def use_mock_news_data():
             weight = NEWS_CATEGORIES.get(category, {'weight': 0.3})['weight']
             
             # Get sentiment scores
-            sentiment_data = analyze_article_sentiment(title, content, source, weight)
+            sentiment_data = analyze_article_sentiment(title, content, source, weight, url)
             sentiment_score = sentiment_data['sentiment_score']
             ai_score = sentiment_data['ai_score']
             ai_explanation = sentiment_data['ai_explanation']
@@ -443,4 +444,44 @@ def use_mock_news_data():
     except Exception as e:
         logger.error(f"Error creating mock news data: {str(e)}")
         logger.exception("Mock news error")
-        return {'news': []} 
+        return {'news': []}
+
+def check_eventregistry_status():
+    """Check if Event Registry API is available and working.
+    
+    Returns:
+        bool: True if Event Registry API is working, False otherwise
+    """
+    try:
+        # Lazy import to avoid loading Event Registry module if not used
+        try:
+            from eventregistry import EventRegistry
+        except ImportError:
+            logger.error("EventRegistry package not installed")
+            return False
+        
+        # Check if API key is available
+        if not NEWS_API_KEY:
+            logger.warning("No Event Registry API key provided")
+            return False
+        
+        # Initialize Event Registry client (minimal test)
+        er = EventRegistry(apiKey=NEWS_API_KEY)
+        
+        # Execute a minimal query just to test connectivity
+        def execute_test_query():
+            # Just retrieve the available sources to minimize data transfer
+            return er.suggestSourcesAtLeastNArticles(1, 1) is not None
+        
+        # Execute with rate limiting
+        result = eventregistry_rate_limiter.execute(
+            execute_test_query,
+            max_retries=1,
+            initial_backoff=1.0
+        )
+        
+        return result is not False  # Return True if we got any response
+        
+    except Exception as e:
+        logger.error(f"Error checking Event Registry status: {str(e)}")
+        return False 

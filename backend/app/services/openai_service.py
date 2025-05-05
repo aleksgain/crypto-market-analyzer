@@ -6,6 +6,7 @@ import threading
 import openai
 import importlib
 import httpx
+import os
 
 from ..config import OPENAI_API_KEY, OPENAI_TOKEN_BUCKET_SIZE, OPENAI_TOKENS_PER_MINUTE, MIN_OPENAI_REQUEST_INTERVAL
 from ..utils.rate_limiting import RateLimitedAPIClient, QueuedWorker
@@ -43,14 +44,19 @@ def init_openai_client():
         openai_version = importlib.metadata.version('openai')
         logger.info(f"OpenAI version: {openai_version}")
         
-        # Monkey patch to disable proxy and retry handling
+        # Import the OpenAI class
+        from openai import OpenAI
+        
+        # Create the client with proper configuration
+        openai_client = OpenAI(
+            api_key=OPENAI_API_KEY,
+            max_retries=0  # Disable built-in retries, we'll handle them with our rate limiter
+        )
+        
+        # Disable retries at the lowest level possible
         disable_openai_retries()
         
-        # Create OpenAI client
-        from openai import OpenAI
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
         logger.info("OpenAI client initialized successfully")
-        
         return openai_client
     except Exception as e:
         logger.error(f"Error initializing OpenAI client: {str(e)}")
@@ -64,28 +70,6 @@ def disable_openai_retries():
         if hasattr(openai._client, "DEFAULT_MAX_RETRIES"):
             openai._client.DEFAULT_MAX_RETRIES = 0
             logger.info("Disabled OpenAI internal retries")
-        
-        # Set the httpx client to not retry
-        try:
-            # For OpenAI v1.6.0+, we need a different approach
-            # Simply disable the max_retries in the client
-            from openai import OpenAI
-            original_init = OpenAI.__init__
-            
-            def patched_init(self, *args, **kwargs):
-                # Remove proxies keyword if it exists
-                if 'proxies' in kwargs:
-                    del kwargs['proxies']
-                # Set max_retries to 0
-                kwargs['max_retries'] = 0
-                return original_init(self, *args, **kwargs)
-                
-            OpenAI.__init__ = patched_init
-            logger.info("Patched OpenAI client to disable retries")
-            
-        except Exception as e:
-            logger.warning(f"Could not patch OpenAI client: {str(e)}")
-            
     except Exception as e:
         logger.warning(f"Could not disable OpenAI internal retries: {str(e)}")
 
@@ -163,13 +147,14 @@ def call_openai_sync(
         logger.error("Timeout waiting for OpenAI API response")
         return None
 
-def analyze_sentiment(title, content=None, source=None):
+def analyze_sentiment(title, content=None, source=None, url=None):
     """Analyze sentiment of a news article using OpenAI.
     
     Args:
         title: Article title
-        content: Optional article content
+        content: Optional article content (will be summarized or replaced with URL if available)
         source: Optional article source
+        url: Optional article URL
         
     Returns:
         dict: Sentiment analysis result or None if it failed
@@ -180,15 +165,27 @@ def analyze_sentiment(title, content=None, source=None):
     try:
         # Create the prompt
         article_text = f"Title: {title}"
-        if content:
-            article_text += f"\n\nContent: {content}"
         if source:
             article_text += f"\n\nSource: {source}"
             
+        # Use URL instead of full content to save tokens
+        if url:
+            article_text += f"\n\nURL: {url}"
+        elif content:
+            # If URL is not available, use a short summary or truncated content
+            # Limit content to ~100 words to reduce tokens
+            content_words = content.split()
+            if len(content_words) > 100:
+                truncated_content = " ".join(content_words[:100]) + "..."
+                article_text += f"\n\nContent summary: {truncated_content}"
+            else:
+                article_text += f"\n\nContent: {content}"
+            
         # System prompt
         system_prompt = """You are a financial analyst specializing in cryptocurrency markets.
-        Analyze the news article and rate its likely impact on cryptocurrency prices on a scale from -10 (extremely negative) to +10 (extremely positive).
+        Analyze the news article information provided and rate its likely impact on cryptocurrency prices on a scale from -10 (extremely negative) to +10 (extremely positive).
         Consider economic, regulatory, and technological factors in your analysis.
+        Base your analysis primarily on the title and source, and use the URL or content summary for additional context.
         Return a JSON object with two fields:
         1. 'score': A number between -10 and 10
         2. 'explanation': A brief (25 words max) explanation of your rating"""
@@ -247,14 +244,18 @@ def extract_market_insights(news_items, limit=3):
             title = article.get('title', '')
             content = article.get('content', '')
             source = article.get('source', '')
+            url = article.get('url', '')
             
             # System prompt
             system_prompt = """You are a cryptocurrency market analyst extracting key insights.
-            From the news article provided, extract:
+            From the news article information provided, extract:
             1. Market-moving events (regulatory changes, investments, partnerships)
             2. Specific predictions or forecasts mentioned
             3. Key people or organizations involved
             4. Potential impact on Bitcoin and Ethereum prices
+            
+            Base your analysis primarily on the title and source. If a URL is provided, consider the article's credibility and context.
+            Be concise and precise with your analysis.
             
             Return a JSON object with these fields:
             {
@@ -266,7 +267,19 @@ def extract_market_insights(news_items, limit=3):
                 "confidence": "Your confidence in this analysis (1-10 scale)"
             }"""
             
-            user_content = f"Title: {title}\n\nContent: {content}\n\nSource: {source}"
+            # Create user content with URL instead of full content to save tokens
+            user_content = f"Title: {title}\n\nSource: {source}"
+            
+            if url:
+                user_content += f"\n\nURL: {url}"
+            elif content:
+                # If URL is not available, use a short summary or truncated content
+                content_words = content.split()
+                if len(content_words) > 50:
+                    truncated_content = " ".join(content_words[:50]) + "..."
+                    user_content += f"\n\nContent summary: {truncated_content}"
+                else:
+                    user_content += f"\n\nContent: {content}"
             
             # Prepare messages
             messages = [

@@ -24,7 +24,7 @@ def create_app():
     """Create Flask application."""
     app = Flask(__name__)
     CORS(app)
-    
+
     # Initialize database
     init_db()
     
